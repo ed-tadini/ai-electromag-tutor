@@ -76,6 +76,6 @@ def process_and_store(pdf_folder, vector_db_path, batch_size=25): #batch_size = 
 if __name__ == "__main__":
     process_and_store(
         pdf_folder="/home/ed-dev/Projects/ai-electromag-tutor/docs/",
-        vector_db_path="/home/ed-dev/Projects/ai-electromag-tutor/chromadb/chroma_db",
+        vector_db_path="chromadb/chroma_db",
         batch_size=25 
     )
