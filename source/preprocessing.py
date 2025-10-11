@@ -2,7 +2,7 @@ import os
 import pdfplumber
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
-from langchain_chromadb import Chroma
+from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 def text_extractor(pdf_path):
@@ -18,7 +18,7 @@ def process_pdf_streaming(pdf_path, chunk_size=256, chunk_overlap=50):
         chunk_overlap=chunk_overlap
     )
     
-    for page_num, page_text in extract_text_from_pdf(pdf_path):
+    for page_num, page_text in text_extractor(pdf_path):
         chunks = text_splitter.split_text(page_text)
         for chunk in chunks:
             yield Document(
@@ -34,7 +34,7 @@ def process_and_store(pdf_folder, vector_db_path, batch_size=25): #batch_size = 
     embeddings = HuggingFaceEmbeddings(
         model_name='all-MiniLM-L6-v2',
         model_kwargs={'device': 'cpu'},
-        encode_kwargs={'show_progress_bar': True, 'batch_size': 16}
+        encode_kwargs={'batch_size': 16}
     )
     
     vector_db = Chroma(
