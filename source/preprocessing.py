@@ -12,7 +12,7 @@ def text_extractor(pdf_path):
             if text:
                 yield page_num, text
 
-def process_pdf_streaming(pdf_path, chunk_size=256, chunk_overlap=50):
+def process_pdf_streaming(pdf_path, chunk_size=512, chunk_overlap=128): #bigger chunck better for physics
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size, 
         chunk_overlap=chunk_overlap
@@ -77,5 +77,5 @@ if __name__ == "__main__":
     process_and_store(
         pdf_folder="/home/ed-dev/Projects/ai-electromag-tutor/docs/",
         vector_db_path="chromadb/chroma_db",
-        batch_size=25 
+        batch_size=12 
     )
