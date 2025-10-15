@@ -29,7 +29,7 @@ def process_pdf_streaming(pdf_path, chunk_size=512, chunk_overlap=128): #bigger 
                 }
             )
 
-def process_and_store(pdf_folder, vector_db_path, batch_size=25): #batch_size = 25 -> 4GB of RAM taken
+def process_and_store(pdf_folder, vector_db_path, batch_size=25): #batch_size = 25 -> 8GB of RAM taken
 
     embeddings = HuggingFaceEmbeddings(
         model_name='all-MiniLM-L6-v2',
