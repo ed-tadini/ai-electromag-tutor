@@ -8,7 +8,7 @@ Diagram of the high level architecture:
 </div>
 
 ### Critic Agent
-<div align="center">
+
 #### What it does
 Takes retrieved chunks and filters them down to the best 6-8 pieces using two AI experts:
 1. **Ranking expert** - Sorts chunks by relevance to the question
@@ -46,4 +46,3 @@ for attempt in range(2):  # Try max 2 times
 - Use it if answers often feel incomplete
 - Skip it if retrieval already gets good chunks (saves cost)
 - Start without it, add later if needed
-</div>
