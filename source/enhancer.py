@@ -86,13 +86,24 @@ class Enhancer:
             raise ValueError("No query provided")
         
         outputs = self.parallel_chain.invoke({'query': user_query}) #API endpoint 1
-        
+
         semantic = outputs['semantic_expert'].content
         physics = outputs['physics_expert'].content
         prerequisites = outputs['prerequisite_expert'].content
         
         #for retrival
         search_terms = self._extract_search_terms(semantic, physics)
+
+        #====Monitoring===
+        print(f"\n{'='*60}")
+        print("ENHANCER DEBUG")
+        print(f"{'='*60}")
+        print(f"Original query: {user_query}")
+        print(f"\nExtracted search terms ({len(search_terms)}): {search_terms}")
+        print(f"\nSemantic analysis:\n{semantic[:200]}...")
+        print(f"\nPhysics concepts:\n{physics[:200]}...")
+        print(f"\nPrerequisites:\n{prerequisites[:200]}...")
+        #==================
         
         return {
             'query': user_query,

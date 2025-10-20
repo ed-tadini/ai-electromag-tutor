@@ -2,11 +2,14 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain.callbacks import get_openai_callback
 from dataclasses import dataclass
 from enhancer import Enhancer
 from critic import Critic
 from dotenv import load_dotenv
 import time
+from rich.console import Console #formatting for test
+from rich.markdown import Markdown #formatting for test
 
 
 load_dotenv()
@@ -16,7 +19,7 @@ class PipelineConfig:
     initial_chunk_count: int = 20
     max_refinement_attempts: int = 2
     confidence_threshold: float = 0.7
-    vector_db_path: str = "./chromadb"
+    vector_db_path: str = "./chromadb/chroma_db"
     llm_model: str = "gpt-4o"
     llm_temperature: float = 0.4
 
@@ -39,6 +42,7 @@ class Pipeline:
             - Adapt your explanation style based on the pedagogical review
             - If the student shows misconceptions, address them gently but clearly
             - Use mathematical derivations when appropriate, but explain each step
+            - For LaTeX math, use $$ for display equations and $ for inline equations
             - At the end of the message list the prerequisites mentioned by the pedagocial expert
             that we assumed the student knew
 
@@ -49,7 +53,7 @@ class Pipeline:
             model_kwargs={'device': 'cpu'}
         )
         self.vector_store = Chroma(
-            persist_directory=self.config.initial_chunk_count,
+            persist_directory=self.config.vector_db_path,
             embedding_function=embeddings
         )
 
@@ -59,8 +63,17 @@ class Pipeline:
         
         if user_query == '':
             raise ValueError('no user query recieved by refine retrival method')
+        if len(initial_chuncks) == 0:
+            raise ValueError('no chuncks delivered to critic')
 
-        
+        #=====Monitoring=====
+        print(f"\n{'='*60}")
+        print("REFINEMENT LOOP")
+        print(f"{'='*60}")
+        print(f"Starting with {len(initial_chuncks)} chunks")
+        print(f"Confidence threshold: {self.config.confidence_threshold}")
+        #====================
+
         for attempt in range(self.config.max_refinement_attempts):
             critic = Critic(
                 enhancer_message=enhancer_context,
@@ -68,16 +81,24 @@ class Pipeline:
             )
             filtered_chunks, critic_metadata = critic.execute()
             
-            # Accept if confidence sufficient or max attempts reached
+            #=====Monitoring=====
+            print(f"\nAttempt {attempt + 1}/{self.config.max_refinement_attempts}")
+            print(f"  Confidence: {critic_metadata['confidence']:.3f}")
+            print(f"  Selected: {critic_metadata['num_selected']} chunks")
+            #====================
+
             if critic_metadata['confidence'] >= self.config.confidence_threshold:
                 break
             elif attempt == self.config.max_refinement_attempts - 1:
                 print('Critic run out of feedback attempts')
                 break
             
-            # Low confidence: get more chunks
             more_chunks = self.vector_store.similarity_search_with_relevance_scores(user_query, k=10)
             initial_chuncks.extend(more_chunks)
+            #=====Monitoring=====
+            print(f"  Low confidence - fetching 10 more chunks")
+            print(f"  Total chunks now: {len(initial_chuncks)}")
+            #====================
         
         return filtered_chunks
         
@@ -101,23 +122,39 @@ class Pipeline:
         
         start_time = time.time()
 
+        #=====Monitoring=====
+        print(f"\n{'='*60}")
+        print("PIPELINE EXECUTION START")
+        print(f"{'='*60}")
+        print(f"Question: {question}")
+        #====================
+
         # Step 1: enhance the user query
 
         enhancer_message = self.enhancer.enhance(question)
 
         # Step 2: first retrieval
 
-        CHAR_THRESHOLD = 50
+        # CHAR_THRESHOLD = 50
         
-        if len(question) > CHAR_THRESHOLD:
-            user_query = ' '.join(enhancer_message['for_retrieval']) + question.lower()
-        else:
-            user_query = question.lower() + ' '.join(enhancer_message['for_retrieval'])
+        # if len(question) > CHAR_THRESHOLD:
+        #     user_query = ' '.join(enhancer_message['for_retrieval']) + question.lower()
+        # else:
+        #     user_query = question.lower() + ' '.join(enhancer_message['for_retrieval'])
+
+        user_query = question.lower()
 
         initial_chuncks = self.vector_store.similarity_search_with_relevance_scores(
             user_query,
             k = self.config.initial_chunk_count
         )
+
+        #=====Monitoring=====
+        print(f"\nInitial retrieval: {len(initial_chuncks)} chunks")
+        print(f"Query used: {user_query[:100]}...")
+        if initial_chuncks:
+            print(f"Top score: {initial_chuncks[0][1]:.3f}")
+        #====================
 
         # Step 3: critic selection and loop
 
@@ -129,6 +166,14 @@ class Pipeline:
 
         context = self.format_context(chuncks)
 
+        #=====Monitoring=====
+        print(f"\nFinal context: {len(chuncks)} chunks selected")
+        print(f"Context length: {len(context)} chars")
+        print(f"\n{'='*60}")
+        print("CALLING LLM")
+        print(f"{'='*60}")
+        #====================
+
         message = ChatPromptTemplate.from_messages([
             ('system', f"{self.system_prompt}{expert_review}{context}"),
             ('user', f'{question}')
@@ -138,11 +183,24 @@ class Pipeline:
 
         pipeline_t = time.time()
 
-        response = self.llm.invoke(message) #API endpoint 4
+        with get_openai_callback() as cb:
+            chain = message | self.llm
+            response = chain.invoke({}) #API endpoint 4
+            print(f"\nLLM Stats:")
+            print(f"  Tokens: {cb.total_tokens}")
+            print(f"  Cost: ${cb.total_cost:.4f}")
 
         llm_t = time.time()
 
-        return response, pipeline_t-start_time, llm_t - pipeline_t
+        #=====Monitoring=====
+        print(f"\n{'='*60}")
+        print("PIPELINE COMPLETE")
+        print(f"{'='*60}")
+        print(f"pipeline time: {pipeline_t-start_time}")
+        print(f"llm time: {llm_t - pipeline_t}\n")
+        #====================
+
+        return response
 
 
 #======= test =======
@@ -151,8 +209,10 @@ question = 'can you explain to me Gauss Law and how I can use it to derive other
 
 rag = Pipeline()
 
-response, pipeline_time, llm_time = rag.execute(question)
+response = rag.execute(question)
 
-print('LLM response\n\n' + response + '\nPipeline time: ' + pipeline_time +'\nLLM time: ' + llm_time)
+with open('response.md', 'w') as f:
+    f.write(response.content)
+print(f'Response saved to response.md')
 
 
