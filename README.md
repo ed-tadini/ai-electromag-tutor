@@ -15,8 +15,11 @@ Takes retrieved chunks and filters them down to the best 6-8 pieces using two AI
 2. **Relations expert** - Picks the best subset, removes redundancy
 
 #### Returns
-- `filtered_chunks` - The selected chunks
-- `metadata` - Contains `confidence` (0.0 to 1.0), `reasoning`, and `num_selected`
+- `filtered_chunks`: `List[Tuple[Document, float]]` - The selected chunks with their original similarity scores
+- `metadata`: `dict` - Quality assessment containing:
+  - `confidence`: `float` (0.0 to 1.0) - How well the chunks cover the question
+  - `reasoning`: `str` - Why these chunks were selected
+  - `num_selected`: `int` - Number of chunks selected
 
 #### Basic usage
 ```python
