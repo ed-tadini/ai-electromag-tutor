@@ -2,6 +2,7 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from dataclasses import dataclass
 from enhancer import Enhancer
 from critic import Critic
 from dotenv import load_dotenv
@@ -10,10 +11,21 @@ import time
 
 load_dotenv()
 
+@dataclass
+class PipelineConfig:
+    initial_chunk_count: int = 20
+    max_refinement_attempts: int = 2
+    confidence_threshold: float = 0.7
+    vector_db_path: str = "./chromadb"
+    llm_model: str = "gpt-4o"
+    llm_temperature: float = 0.4
+
 class Pipeline:
     
-    def __init__(self, vectorstore_path: str = "./chromadb"):
-        self.llm = ChatOpenAI(model= 'gpt-4o', temperature = 0.4)
+    def __init__(self):
+        self.config = PipelineConfig()
+        self.llm = ChatOpenAI(model= self.config.llm_model, temperature= self.config.llm_temperature)
+        self.enhancer = Enhancer()
         self.system_prompt = """You are an expert electromagnetism tutor with deep expertise in first principles thinking.
             You will receive:
             1. A student's question
@@ -37,20 +49,19 @@ class Pipeline:
             model_kwargs={'device': 'cpu'}
         )
         self.vector_store = Chroma(
-            persist_directory=vectorstore_path,
+            persist_directory=self.config.initial_chunk_count,
             embedding_function=embeddings
         )
 
     
-    def refine_retrieval(self, enhancer_context: dict, initial_chuncks: list[tuple[any, float]], 
-                    user_query: str = '', max_attempts: int = 3, confidence_threshold: float = 0.7):
+    def refine_retrieval(self, enhancer_context: str, initial_chuncks: list[tuple[any, float]], 
+                    user_query: str = ''):
         
         if user_query == '':
             raise ValueError('no user query recieved by refine retrival method')
 
-        CRITIC_APPROVAL = False
         
-        for attempt in range(max_attempts):
+        for attempt in range(self.config.max_refinement_attempts):
             critic = Critic(
                 enhancer_message=enhancer_context,
                 chunks=initial_chuncks
@@ -58,18 +69,17 @@ class Pipeline:
             filtered_chunks, critic_metadata = critic.execute()
             
             # Accept if confidence sufficient or max attempts reached
-            if critic_metadata['confidence'] >= confidence_threshold or attempt == max_attempts - 1:
-                CRITIC_APPROVAL = True
+            if critic_metadata['confidence'] >= self.config.confidence_threshold:
+                break
+            elif attempt == self.config.max_refinement_attempts - 1:
+                print('Critic run out of feedback attempts')
                 break
             
             # Low confidence: get more chunks
-            more_chunks = self.vector_store.search(user_query, k=10)
+            more_chunks = self.vector_store.similarity_search_with_relevance_scores(user_query, k=10)
             initial_chuncks.extend(more_chunks)
         
-        if CRITIC_APPROVAL:
-            return filtered_chunks
-        else:
-            raise ValueError('critic could not find relevant chuncks')
+        return filtered_chunks
         
     def format_context(self, chuncks: list[tuple[any, float]]) -> str:
 
@@ -93,28 +103,25 @@ class Pipeline:
 
         # Step 1: enhance the user query
 
-        enhancer = Enhancer()
-        enhancer_message = enhancer.enhance(question)
+        enhancer_message = self.enhancer.enhance(question)
 
         # Step 2: first retrieval
 
         CHAR_THRESHOLD = 50
         
-        if len(question) < CHAR_THRESHOLD:
+        if len(question) > CHAR_THRESHOLD:
             user_query = ' '.join(enhancer_message['for_retrieval']) + question.lower()
         else:
-            user_query = question.lower()
-
-        INITIAL_CHUNCK_NUM = 20
+            user_query = question.lower() + ' '.join(enhancer_message['for_retrieval'])
 
         initial_chuncks = self.vector_store.similarity_search_with_relevance_scores(
             user_query,
-            k = INITIAL_CHUNCK_NUM
+            k = self.config.initial_chunk_count
         )
 
         # Step 3: critic selection and loop
 
-        expert_review = "EXPERT REVIEW\n" + "\n\n".join(enhancer_message['for_llm'].values())
+        expert_review = "PEDAGOGICAL REVIEW\n" + "\n\n".join(enhancer_message['for_llm'].values())
 
         chuncks = self.refine_retrieval(expert_review, initial_chuncks, user_query)
 

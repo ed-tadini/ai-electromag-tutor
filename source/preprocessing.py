@@ -66,8 +66,6 @@ def process_and_store(pdf_folder, vector_db_path, batch_size=25): #batch_size = 
         vector_db.add_documents(batch_documents)
         print(f"Stored final batch of {len(batch_documents)} chunks")
     
-    if vector_db:
-        vector_db.persist()
     
     print(f"\nTotal chunks processed: {total_chunks}")
     print(f"Vector database saved to: {vector_db_path}")
