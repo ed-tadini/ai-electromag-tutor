@@ -7,6 +7,40 @@ Diagram of the high level architecture:
 <img src="readme/Rich_arch2.png" width="800" height="800">
 </div>
 
+### Enhancer Agent
+
+#### What it does
+Analyzes the user's question with three parallel AI experts to understand what they need:
+1. **Semantic expert** - Identifies explanation type needed and learning gaps
+2. **Physics expert** - Extracts core concepts and background knowledge
+3. **Prerequisite expert** - Identifies required prerequisites and likely gaps
+
+#### Returns
+Dictionary with three keys:
+- `query`: `str` - Original user question
+- `for_retrieval`: `List[str]` - Optimized search terms for vector DB
+- `for_llm`: `dict` - Context for personalized responses:
+  - `semantic`: Pedagogical assessment
+  - `physics`: Core concepts and connections
+  - `prerequisites`: Required knowledge and gaps
+
+#### Basic usage
+```python
+enhancer = Enhancer()
+result = enhancer.enhance("can you explain Gauss law?")
+
+# Use for retrieval
+chunks = vectorstore.search(result['for_retrieval'], k=20)
+
+# Pass context to LLM for personalized teaching
+llm_context = result['for_llm']
+```
+
+#### Why use it
+- Converts vague questions into precise search terms
+- Gives LLM insight into what explanation style helps most
+- All three experts run in parallel for speed
+
 ### Critic Agent
 
 #### What it does
