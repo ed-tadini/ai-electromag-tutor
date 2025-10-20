@@ -85,7 +85,7 @@ class Enhancer:
         if not user_query:
             raise ValueError("No query provided")
         
-        outputs = self.parallel_chain.invoke({'query': user_query})
+        outputs = self.parallel_chain.invoke({'query': user_query}) #API endpoint 1
         
         semantic = outputs['semantic_expert'].content
         physics = outputs['physics_expert'].content

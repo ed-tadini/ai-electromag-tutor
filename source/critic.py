@@ -9,7 +9,7 @@ load_dotenv()
 
 class Critic:
     def __init__(self, enhancer_message: str, chunks: List[Tuple[any, float]]):
-        self.enhancer_message = enhancer_message
+        self.enhancer_message = ' '.join(enhancer_message)
         self.chunks = chunks
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
         
@@ -65,7 +65,7 @@ class Critic:
         result = chain.invoke({
             'enhancer_message': self.enhancer_message,
             'formatted_chunks': self._format_chunks()
-        })
+        }) #API endpoint 2
         return result
     
     def filter_chunks(self, ranked_result: dict) -> dict:
@@ -75,7 +75,7 @@ class Critic:
         chain = self.filter_prompt | self.llm | JsonOutputParser()
         result = chain.invoke({
             'ranked_chunks': ranked_str
-        })
+        }) #API endpoint 3
         return result
     
     
