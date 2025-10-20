@@ -4,12 +4,10 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.callbacks import get_openai_callback
 from dataclasses import dataclass
+from dotenv import load_dotenv
 from enhancer import Enhancer
 from critic import Critic
-from dotenv import load_dotenv
 import time
-from rich.console import Console #formatting for test
-from rich.markdown import Markdown #formatting for test
 
 
 load_dotenv()
