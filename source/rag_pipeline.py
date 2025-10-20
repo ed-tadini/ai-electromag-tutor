@@ -1,6 +1,7 @@
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
-from langchain_community.vectorstores import VectorStore
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from enhancer import Enhancer
 from critic import Critic
 from dotenv import load_dotenv
@@ -13,15 +14,32 @@ class Pipeline:
     
     def __init__(self, vectorstore_path: str = "./chromadb"):
         self.llm = ChatOpenAI(model= 'gpt-4o', temperature = 0.4)
-        self.system_prompt = """" You are an electromagnetism tutor that has a strong background in 
-        first principles thinking. You will receive a student's question paired with:
-        - an expert review of the question and possible learning gaps
-        - context from private documents relevant to the question
-        Your job is to provide to the student an answer based 70/100 on the context provided and
-        30/100 based on your own knowledge, citing the context source and page number.
+        self.system_prompt = """You are an expert electromagnetism tutor with deep expertise in first principles thinking.
+            You will receive:
+            1. A student's question
+            2. An expert pedagogical review identifying their learning needs
+            3. Relevant context from electromagnetism textbooks and materials
+
+            Your task:
+            - Answer the student's question primarily using the provided context
+            - Supplement with your own knowledge only when necessary to clarify or connect concepts
+            - Always cite sources using the format: [Source: filename, Page: X]
+            - Adapt your explanation style based on the pedagogical review
+            - If the student shows misconceptions, address them gently but clearly
+            - Use mathematical derivations when appropriate, but explain each step
+            - At the end of the message list the prerequisites mentioned by the pedagocial expert
+            that we assumed the student knew
+
+            Remember: You're teaching, not just answering. Help them build intuition.
         """
-        self.vector_store = VectorStore(persist_directory = vectorstore_path)
-        self.vector_store.load_vectorstore()
+        embeddings = HuggingFaceEmbeddings(
+            model_name='all-MiniLM-L6-v2',
+            model_kwargs={'device': 'cpu'}
+        )
+        self.vector_store = Chroma(
+            persist_directory=vectorstore_path,
+            embedding_function=embeddings
+        )
 
     
     def refine_retrieval(self, enhancer_context: dict, initial_chuncks: list[tuple[any, float]], 
@@ -96,11 +114,11 @@ class Pipeline:
 
         # Step 3: critic selection and loop
 
-        chuncks = self.refine_retrieval(enhancer_message['for_llm'], initial_chuncks, user_query)
+        expert_review = "EXPERT REVIEW\n" + "\n\n".join(enhancer_message['for_llm'].values())
+
+        chuncks = self.refine_retrieval(expert_review, initial_chuncks, user_query)
 
         # Step 4: set up llm call
-
-        expert_review = "EXPERT REVIEW\n" + "\n".join(enhancer_message['for_llm'])
 
         context = self.format_context(chuncks)
 
@@ -126,8 +144,8 @@ question = 'can you explain to me Gauss Law and how I can use it to derive other
 
 rag = Pipeline()
 
-response = rag.execute(question)
+response, pipeline_time, llm_time = rag.execute(question)
 
-print('LLM response\n\n' + response)
+print('LLM response\n\n' + response + '\nPipeline time: ' + pipeline_time +'\nLLM time: ' + llm_time)
 
 

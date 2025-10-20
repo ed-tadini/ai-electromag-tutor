@@ -2,14 +2,14 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from dotenv import load_dotenv
-from typing import List, Tuple
+from typing import List, Tuple, Any
 import json
 
 load_dotenv()
 
 class Critic:
-    def __init__(self, enhancer_message: str, chunks: List[Tuple[any, float]]):
-        self.enhancer_message = ' '.join(enhancer_message)
+    def __init__(self, enhancer_message: str, chunks: List[Tuple[Any, float]]):
+        self.enhancer_message = enhancer_message
         self.chunks = chunks
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
         
