@@ -61,13 +61,13 @@ class Critic:
     
     def rank_chunks(self) -> dict:
 
-        #=====Monitoring=====
-        print(f"\n{'='*60}")
-        print("CRITIC - RANKING STAGE")
-        print(f"{'='*60}")
-        print(f"Total chunks to rank: {len(self.chunks)}")
-        print(f"Enhancer context length: {len(self.enhancer_message)} chars")
-        #====================
+        # #=====Monitoring=====
+        # print(f"\n{'='*60}")
+        # print("CRITIC - RANKING STAGE")
+        # print(f"{'='*60}")
+        # print(f"Total chunks to rank: {len(self.chunks)}")
+        # print(f"Enhancer context length: {len(self.enhancer_message)} chars")
+        # #====================
 
         chain = self.ranking_prompt | self.llm | JsonOutputParser()
         result = chain.invoke({
@@ -75,20 +75,20 @@ class Critic:
             'formatted_chunks': self._format_chunks()
         }) #API endpoint 2
 
-        #=====Monitoring=====
-        print(f"Ranked {len(result['rankings'])} chunks")
-        print(f"Top 3 ranks: {result['rankings'][:3]}")
-        #====================
+        # #=====Monitoring=====
+        # print(f"Ranked {len(result['rankings'])} chunks")
+        # print(f"Top 3 ranks: {result['rankings'][:3]}")
+        # #====================
 
         return result
     
     def filter_chunks(self, ranked_result: dict) -> dict:
         
-        #=====Monitoring=====
-        print(f"\n{'='*60}")
-        print("CRITIC - FILTERING STAGE")
-        print(f"{'='*60}")
-        #====================
+        # #=====Monitoring=====
+        # print(f"\n{'='*60}")
+        # print("CRITIC - FILTERING STAGE")
+        # print(f"{'='*60}")
+        # #====================
 
         ranked_str = json.dumps(ranked_result['rankings'], indent=2)
         
@@ -97,11 +97,11 @@ class Critic:
             'ranked_chunks': ranked_str
         }) #API endpoint 3
 
-        #=====Monitoring=====
-        print(f"Selected {len(result['selected_ids'])} chunks: {result['selected_ids']}")
-        print(f"Confidence: {result.get('confidence', 'N/A')}")
-        print(f"Reasoning: {result.get('reasoning', 'N/A')[:150]}...")
-        #====================
+        # #=====Monitoring=====
+        # print(f"Selected {len(result['selected_ids'])} chunks: {result['selected_ids']}")
+        # print(f"Confidence: {result.get('confidence', 'N/A')}")
+        # print(f"Reasoning: {result.get('reasoning', 'N/A')[:150]}...")
+        # #====================
         
         return result
     
@@ -116,7 +116,6 @@ class Critic:
         
         # Step 3: Return filtered chunks + metadata
         selected_ids = filtered['selected_ids']
-        assert all(i < len(self.chunks) for i in selected_ids), f"Invalid IDs: {selected_ids}, only have {len(self.chunks)} chunks"
         final_chunks = [self.chunks[i] for i in selected_ids]
         
         metadata = {

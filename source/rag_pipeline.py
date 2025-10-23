@@ -68,8 +68,6 @@ class Pipeline:
         print(f"\n{'='*60}")
         print("REFINEMENT LOOP")
         print(f"{'='*60}")
-        print(f"Starting with {len(initial_chuncks)} chunks")
-        print(f"Confidence threshold: {self.config.confidence_threshold}")
         #====================
 
         for attempt in range(self.config.max_refinement_attempts):
@@ -78,12 +76,6 @@ class Pipeline:
                 chunks=initial_chuncks
             )
             filtered_chunks, critic_metadata = critic.execute()
-            
-            #=====Monitoring=====
-            print(f"\nAttempt {attempt + 1}/{self.config.max_refinement_attempts}")
-            print(f"  Confidence: {critic_metadata['confidence']:.3f}")
-            print(f"  Selected: {critic_metadata['num_selected']} chunks")
-            #====================
 
             if critic_metadata['confidence'] >= self.config.confidence_threshold:
                 break
@@ -124,7 +116,6 @@ class Pipeline:
         print(f"\n{'='*60}")
         print("PIPELINE EXECUTION START")
         print(f"{'='*60}")
-        print(f"Question: {question}")
         #====================
 
         # Step 1: enhance the user query
@@ -133,14 +124,12 @@ class Pipeline:
 
         # Step 2: first retrieval
 
-        # CHAR_THRESHOLD = 50
+        CHAR_THRESHOLD = 50
         
-        # if len(question) > CHAR_THRESHOLD:
-        #     user_query = ' '.join(enhancer_message['for_retrieval']) + question.lower()
-        # else:
-        #     user_query = question.lower() + ' '.join(enhancer_message['for_retrieval'])
-
-        user_query = question.lower()
+        if len(question) > CHAR_THRESHOLD:
+            user_query = ' '.join(enhancer_message['for_retrieval']) + question.lower()
+        else:
+            user_query = question.lower() + ' '.join(enhancer_message['for_retrieval'])
 
         initial_chuncks = self.vector_store.similarity_search_with_relevance_scores(
             user_query,
@@ -149,9 +138,6 @@ class Pipeline:
 
         #=====Monitoring=====
         print(f"\nInitial retrieval: {len(initial_chuncks)} chunks")
-        print(f"Query used: {user_query[:100]}...")
-        if initial_chuncks:
-            print(f"Top score: {initial_chuncks[0][1]:.3f}")
         #====================
 
         # Step 3: critic selection and loop
