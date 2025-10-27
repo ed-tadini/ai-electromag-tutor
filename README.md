@@ -1,6 +1,8 @@
 # Rick: an ai electromag tutor
 Basic agentic RAG pipeline for physics electromagnetism.
 
+Current status: MVP and main pipeline done. Next up -> evaluation and front-end
+
 ## Architecture
 Diagram of the high level architecture:
 <div align="center">
