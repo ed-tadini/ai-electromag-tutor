@@ -184,7 +184,7 @@ class Pipeline:
 
         with get_openai_callback() as cb:
             chain = message | self.llm
-            response = chain.invoke({}) #API endpoint 4
+            response = chain.invoke({}) #API call 4
             print(f"\nLLM Stats:")
             print(f"  Tokens: {cb.total_tokens}")
             print(f"  Cost: ${cb.total_cost:.4f}")
@@ -203,14 +203,16 @@ class Pipeline:
 
 
 #======= test =======
+def main():
+    question = "If you had to pinpoint only 1 concept or equation or law to best describe electrostatics, what would that be?"
+    rag = Pipeline()
 
-question = "If you had to pinpoint only 1 concept or equation or law to best describe electrostatics, what would that be?"
-rag = Pipeline()
+    response = rag.execute(question)
 
-response = rag.execute(question)
+    with open('response.md', 'w') as f:
+        f.write(response.content)
+    print(f'Response saved to response.md')
 
-with open('response.md', 'w') as f:
-    f.write(response.content)
-print(f'Response saved to response.md')
-
+if __name__ == '__main__':
+    main()
 

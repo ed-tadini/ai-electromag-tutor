@@ -73,7 +73,7 @@ class Critic:
         result = chain.invoke({
             'enhancer_message': self.enhancer_message,
             'formatted_chunks': self._format_chunks()
-        }) #API endpoint 2
+        }) #API call 2
 
         # #=====Monitoring=====
         # print(f"Ranked {len(result['rankings'])} chunks")
@@ -95,7 +95,7 @@ class Critic:
         chain = self.filter_prompt | self.llm | JsonOutputParser()
         result = chain.invoke({
             'ranked_chunks': ranked_str
-        }) #API endpoint 3
+        }) #API call 3
 
         # #=====Monitoring=====
         # print(f"Selected {len(result['selected_ids'])} chunks: {result['selected_ids']}")

@@ -107,7 +107,7 @@ class Enhancer:
             raise ValueError("No query provided")
         
         # run all experts in parallel
-        outputs = self.parallel_chain.invoke({'query': user_query})
+        outputs = self.parallel_chain.invoke({'query': user_query}) #API call 1
         
         semantic = outputs['semantic_expert'].content
         physics = outputs['physics_expert'].content
