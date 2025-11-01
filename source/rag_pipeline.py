@@ -58,13 +58,6 @@ class Pipeline:
     def first_retrieval(self, queries: list[str], k: int = 7) -> list[tuple]:
 
         seen = {}
-        
-        #=====Monitoring=====
-        print(f"\n{'='*60}")
-        print("FIRST RETREIVAL")
-        print(f"{'='*60}")
-        print(f"\n{'\n'.join(queries)}")
-        #====================
 
         for query in queries:
             results = self.vector_store.similarity_search_with_relevance_scores(query, k=k)
