@@ -6,7 +6,7 @@ import re
 
 load_dotenv()
 
-class Enhancer:
+class Enhancer:  
     def __init__(self):
         self.llm = ChatOpenAI(model='gpt-4o-mini', temperature=0.3)
         
@@ -26,7 +26,6 @@ class Enhancer:
                 Format your response as:
                 PRIMARY_NEED: [main type of content needed]
                 ASSESSMENT: [2-3 sentences of pedagogical insight]
-                KEYWORDS: [key terms for retrieval, comma-separated]
                 
                 Be insightful and pedagogical - read between the lines."""),
                 ("user", "{query}")
@@ -50,8 +49,7 @@ class Enhancer:
                 Format your response as:
                 CORE: concept1, concept2, concept3
                 BACKGROUND: concept1, concept2, concept3
-                CONNECTIONS: [1 sentence about links to other physics areas, if relevant]
-                SEARCH_TERMS: [optimized terms for database retrieval, comma-separated]"""),
+                CONNECTIONS: [1 sentence about links to other physics areas, if relevant]"""),
                 ("user", "{query}")
             ]),
             
@@ -68,6 +66,34 @@ class Enhancer:
                 LIKELY_GAPS: [1-2 sentences about what they might be missing]
                 """),
                 ("user", "{query}")
+            ]),
+            
+            'query_reformulation_expert': ChatPromptTemplate.from_messages([
+                ("system", """You are a search optimization expert for physics textbook retrieval.
+                
+                Your task: Transform the student's question into 2-3 enhanced search queries that will 
+                retrieve the most relevant textbook content from a vector database.
+                
+                Guidelines:
+                - Expand abbreviations and implicit concepts
+                - Add technical terms that would appear in textbook explanations
+                - Make queries specific enough to avoid noise but broad enough to capture relevant content
+                - Include both the "what" (concept) and "how" (application/derivation) if relevant
+                - Each query should be a complete, natural sentence or phrase (not keywords)
+                - Think about how textbooks actually explain these concepts
+                
+                Format your response as:
+                QUERY1: [first enhanced query]
+                QUERY2: [second enhanced query]
+                QUERY3: [third enhanced query, optional]
+                
+                Example:
+                Student asks: "how does Gauss law work?"
+                QUERY1: Gauss law for electric fields and its mathematical formulation
+                QUERY2: applying Gauss law to calculate electric field using symmetry
+                QUERY3: integral form of Gauss law and closed surface charge enclosed
+                """),
+                ("user", "{query}")
             ])
         }
         
@@ -76,40 +102,24 @@ class Enhancer:
             for name, prompt in self.experts.items()
         })
     
-    def enhance(self, user_query):
-        """
-        Run all experts and return outputs for retrieval and LLM context.
-        
-        Return: dictionary -> keys = 'query', 'for_retrival', 'for_llm'
-        """
+    def enhance(self, user_query: str) -> dict:
         if not user_query:
             raise ValueError("No query provided")
         
-        outputs = self.parallel_chain.invoke({'query': user_query}) #API endpoint 1
-
+        # run all experts in parallel
+        outputs = self.parallel_chain.invoke({'query': user_query})
+        
         semantic = outputs['semantic_expert'].content
         physics = outputs['physics_expert'].content
         prerequisites = outputs['prerequisite_expert'].content
+        reformulated = outputs['query_reformulation_expert'].content
         
-        #for retrival
-        search_terms = self._extract_search_terms(semantic, physics)
-
-        # #====Monitoring===
-        # print(f"\n{'='*60}")
-        # print("ENHANCER DEBUG")
-        # print(f"{'='*60}")
-        # print(f"Original query: {user_query}")
-        # print(f"\nExtracted search terms ({len(search_terms)}): {search_terms}")
-        # print(f"\nSemantic analysis:\n{semantic[:200]}...")
-        # print(f"\nPhysics concepts:\n{physics[:200]}...")
-        # print(f"\nPrerequisites:\n{prerequisites[:200]}...")
-        # #==================
+        # extract enhanced queries for retrieval
+        enhanced_queries = self._extract_enhanced_queries(reformulated)
         
         return {
             'query': user_query,
-            
-            'for_retrieval': search_terms,
-            
+            'for_retrieval': enhanced_queries,
             'for_llm': {
                 'semantic': semantic,
                 'physics': physics,
@@ -117,40 +127,55 @@ class Enhancer:
             }
         }
     
-    def _extract_search_terms(self, semantic, physics):
+    def _extract_enhanced_queries(self, reformulated_text: str) -> list[str]:
 
-        terms = []
+        queries = []
         
+        for i in range(1, 4):
+            pattern = rf'QUERY{i}:(.+?)(?:QUERY{i+1}:|$)'
+            match = re.search(pattern, reformulated_text, re.DOTALL)
+            if match:
+                query = match.group(1).strip()
+                query = ' '.join(query.split())
+                if query:
+                    queries.append(query)
 
-        keywords_match = re.search(r'KEYWORDS:(.+?)(?:\n|$)', semantic)
-        if keywords_match:
-            terms.extend([k.strip() for k in keywords_match.group(1).split(',')])
-
-        core_match = re.search(r'CORE:(.+?)(?:\n|$)', physics)
-        if core_match:
-            terms.extend([k.strip() for k in core_match.group(1).split(',')])
+        if not queries:
+            for line in reformulated_text.split('\n'):
+                if line.strip().startswith('QUERY'):
+                    parts = line.split(':', 1)
+                    if len(parts) == 2:
+                        query = parts[1].strip()
+                        if query:
+                            queries.append(query)
         
-        search_match = re.search(r'SEARCH_TERMS:(.+?)(?:\n|$)', physics)
-        if search_match:
-            terms.extend([k.strip() for k in search_match.group(1).split(',')])
-        
-        return list(set(terms))
+        return queries if queries else []
 
 
-#======= test =======
+# ======= TESTING =======
+if __name__ == "__main__":
 
-enhancer = Enhancer()
-result = enhancer.enhance("can you explain to me Gauss law and how I can use it to find electric fields?")
-
-print("=== SEARCH WITH THESE ===")
-print(result['for_retrieval'])
-
+    enhancer = Enhancer()
+    query = "If you had to pinpoint only 1 concept or equation or law to best describe electrostatics, what would that be?"
+    result = enhancer.enhance(query)
 
 
-print("\n=== GIVE THIS CONTEXT TO LLM ===")
-print(result['for_llm']['semantic'])
-print(result['for_llm']['physics'])
-print(result['for_llm']['prerequisites'])
+    print(f"\n{'='*80}")
+    print(f"ORIGINAL QUERY: {query}")
+    print('='*80)
+    
+    
+    print("\n=== ENHANCED QUERIES FOR RETRIEVAL ===")
+    for i, q in enumerate(result['for_retrieval'], 1):
+        print(f"{i}. {q}")
+    
+    print("\n=== PEDAGOGICAL CONTEXT FOR LLM ===")
+    print("\nSemantic Expert:")
+    print(result['for_llm']['semantic'])
+    print("\nPhysics Expert:")
+    print(result['for_llm']['physics'])
+    print("\nPrerequisite Expert:")
+    print(result['for_llm']['prerequisites'])
 
 
 

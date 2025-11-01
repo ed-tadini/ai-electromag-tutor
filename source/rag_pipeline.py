@@ -5,8 +5,8 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.callbacks import get_openai_callback
 from dataclasses import dataclass
 from dotenv import load_dotenv
-from enhancer import Enhancer
-from critic import Critic
+from .enhancer import Enhancer
+from .critic import Critic
 import time
 
 
@@ -17,7 +17,7 @@ class PipelineConfig:
     initial_chunk_count: int = 20
     max_refinement_attempts: int = 2
     confidence_threshold: float = 0.7
-    vector_db_path: str = "./chromadb/chroma_db"
+    vector_db_path: str = "/home/ed-dev/Projects/ai-electromag-tutor/source/chromadb/chroma_db"
     llm_model: str = "gpt-4o"
     llm_temperature: float = 0.4
 
@@ -55,9 +55,29 @@ class Pipeline:
             embedding_function=embeddings
         )
 
+    def first_retrieval(self, queries: list[str], k: int = 7) -> list[tuple]:
+
+        seen = {}
+        
+        #=====Monitoring=====
+        print(f"\n{'='*60}")
+        print("FIRST RETREIVAL")
+        print(f"{'='*60}")
+        print(f"\n{'\n'.join(queries)}")
+        #====================
+
+        for query in queries:
+            results = self.vector_store.similarity_search_with_relevance_scores(query, k=k)
+            for doc, score in results:
+                key = doc.page_content
+                if key not in seen or score > seen[key][1]:
+                    seen[key] = (doc, score)
+        
+        return sorted(seen.values(), key=lambda x: x[1], reverse=True)
+
     
     def refine_retrieval(self, enhancer_context: str, initial_chuncks: list[tuple[any, float]], 
-                    user_query: str = ''):
+                         queries: list[str], user_query: str = ''):
         
         if user_query == '':
             raise ValueError('no user query recieved by refine retrival method')
@@ -83,7 +103,7 @@ class Pipeline:
                 print('Critic run out of feedback attempts')
                 break
             
-            more_chunks = self.vector_store.similarity_search_with_relevance_scores(user_query, k=10)
+            more_chunks = self.first_retrieval(queries, k = 5)
             initial_chuncks.extend(more_chunks)
             #=====Monitoring=====
             print(f"  Low confidence - fetching 10 more chunks")
@@ -124,17 +144,7 @@ class Pipeline:
 
         # Step 2: first retrieval
 
-        CHAR_THRESHOLD = 50
-        
-        if len(question) > CHAR_THRESHOLD:
-            user_query = ' '.join(enhancer_message['for_retrieval']) + question.lower()
-        else:
-            user_query = question.lower() + ' '.join(enhancer_message['for_retrieval'])
-
-        initial_chuncks = self.vector_store.similarity_search_with_relevance_scores(
-            user_query,
-            k = self.config.initial_chunk_count
-        )
+        initial_chuncks = self.first_retrieval(enhancer_message['for_retrieval'])
 
         #=====Monitoring=====
         print(f"\nInitial retrieval: {len(initial_chuncks)} chunks")
@@ -144,7 +154,12 @@ class Pipeline:
 
         expert_review = "PEDAGOGICAL REVIEW\n" + "\n\n".join(enhancer_message['for_llm'].values())
 
-        chuncks = self.refine_retrieval(expert_review, initial_chuncks, user_query)
+        chuncks = self.refine_retrieval(
+            expert_review, 
+            initial_chuncks, 
+            enhancer_message['for_retrieval'],
+            question
+        )
 
         # Step 4: set up llm call
 
@@ -189,8 +204,7 @@ class Pipeline:
 
 #======= test =======
 
-question = 'can you explain to me Gauss Law and how I can use it to derive other equation when solving problems'
-
+question = "If you had to pinpoint only 1 concept or equation or law to best describe electrostatics, what would that be?"
 rag = Pipeline()
 
 response = rag.execute(question)
