@@ -1,87 +1,257 @@
-# Rick: an ai electromag tutor
-Basic agentic RAG pipeline for physics electromagnetism.
-
-Current status: MVP and main pipeline done. Next up -> evaluation and front-end
+# Rick: AI Electromagnetism Tutor
+An agentic RAG pipeline that teaches electromagnetism by understanding student questions, retrieving relevant textbook content, and delivering personalized explanations.<br>
+Status: MVP complete with evaluation framework.
 
 ## Architecture
-Diagram of the high level architecture:
+The system uses a multi-agent approach with iterative refinement:
 <div align="center">
 <img src="readme/Rich_arch2.png" width="800" height="800">
 </div>
 
-### Enhancer Agent
+### Key Design Choices
+**Why agents?** Breaking down the RAG pipeline into specialized agents improves both retrieval quality and pedagogical effectiveness. <br>
+**Why iterative refinement?** The Critic's confidence score triggers additional retrieval when initial chunks are insufficient, balancing quality with API costs.<br>
+**Why parallel experts?** The Enhancer runs 4 LLM calls in parallel to understand different aspects of the question simultaneously.<br>
 
-#### What it does
-Analyzes the user's question with three parallel AI experts to understand what they need:
-1. **Semantic expert** - Identifies explanation type needed and learning gaps
-2. **Physics expert** - Extracts core concepts and background knowledge
-3. **Prerequisite expert** - Identifies required prerequisites and likely gaps
+---
 
-#### Returns
-Dictionary with three keys:
-- `query`: `str` - Original user question
-- `for_retrieval`: `List[str]` - Optimized search terms for vector DB
-- `for_llm`: `dict` - Context for personalized responses:
-  - `semantic`: Pedagogical assessment
-  - `physics`: Core concepts and connections
-  - `prerequisites`: Required knowledge and gaps
+## Components
 
-#### Basic usage
+### 1. Preprocessing (`preprocessing.py`)
+
+Converts PDF textbooks into a searchable vector database.
+
+**Process:**
+- Extracts text from PDFs page-by-page
+- Splits into 512-character chunks (overlap: 128 chars)
+- Generates embeddings using `all-MiniLM-L6-v2`
+- Stores in ChromaDB with source/page metadata
+
+**Key parameters:**
+- `chunk_size=512`: Larger chunks preserve physics context
+- `batch_size=12`: Memory-efficient processing (~8GB RAM)
+
+**Usage:**
 ```python
-enhancer = Enhancer()
-result = enhancer.enhance("can you explain Gauss law?")
+from preprocessing import process_and_store
 
-# Use for retrieval
-chunks = vectorstore.search(result['for_retrieval'], k=20)
-
-# Pass context to LLM for personalized teaching
-llm_context = result['for_llm']
+process_and_store(
+    pdf_folder="docs/",
+    vector_db_path="chromadb/chroma_db",
+    batch_size=12
+)
 ```
 
-#### Why use it
-- Converts vague questions into precise search terms
-- Gives LLM insight into what explanation style helps most
-- All three experts run in parallel for speed
+---
 
-### Critic Agent
+### 2. Enhancer (`enhancer.py`)
 
-#### What it does
-Takes retrieved chunks and filters them down to the best 6-8 pieces using two AI experts:
-1. **Ranking expert** - Sorts chunks by relevance to the question
-2. **Relations expert** - Picks the best subset, removes redundancy
+Analyzes user questions to optimize both retrieval and teaching approach.
 
-#### Returns
-- `filtered_chunks`: `List[Tuple[Document, float]]` - The selected chunks with their original similarity scores
-- `metadata`: `dict` - Quality assessment containing:
-  - `confidence`: `float` (0.0 to 1.0) - How well the chunks cover the question
-  - `reasoning`: `str` - Why these chunks were selected
-  - `num_selected`: `int` - Number of chunks selected
+**Four parallel experts:**
+1. **Semantic Expert** - Identifies learning needs (e.g., "needs intuition, not just formulas")
+2. **Physics Expert** - Extracts core concepts and background knowledge
+3. **Prerequisite Expert** - Identifies required math/physics foundations
+4. **Query Reformulation Expert** - Generates 2-3 optimized search queries
 
-#### Basic usage
+**Returns:**
 ```python
-critic = Critic(enhancer_message=enhanced_query, chunks=retrieved_chunks)
+{
+    'query': str,                    # Original question
+    'for_retrieval': List[str],      # Enhanced search queries
+    'for_llm': {                     # Pedagogical context
+        'semantic': str,
+        'physics': str,
+        'prerequisites': str
+    }
+}
+```
+
+**Example:**
+```python
+enhancer = Enhancer()
+result = enhancer.enhance("how does Gauss law work?")
+
+# result['for_retrieval'] might be:
+# ["Gauss law for electric fields mathematical formulation",
+#  "applying Gauss law with symmetry to calculate fields",
+#  "integral form Gauss law closed surface charge"]
+```
+
+**Why this matters:** Vague questions like "explain Gauss law" become precise queries that retrieve the right textbook sections.
+
+---
+
+### 3. Critic (`critic.py`)
+
+Filters retrieved chunks down to the most relevant 6-8 pieces.
+
+**Two-stage process:**
+1. **Ranking** - Sorts all chunks by relevance (GPT-4o-mini)
+2. **Filtering** - Selects optimal subset, eliminates redundancy
+
+**Returns:**
+```python
+(
+    filtered_chunks: List[Tuple[Document, float]],
+    metadata: {
+        'confidence': float,      # 0.0-1.0: coverage quality
+        'reasoning': str,         # Why these chunks?
+        'num_selected': int
+    }
+)
+```
+
+**Confidence scoring:**
+- `>= 0.7`: Good coverage, proceed to LLM
+- `< 0.7`: Trigger additional retrieval
+
+**Usage:**
+```python
+critic = Critic(
+    enhancer_message=enhancer_context,
+    chunks=initial_chunks
+)
 filtered_chunks, metadata = critic.execute()
 ```
 
-#### Adding a retrieval loop
-Use the `confidence` score to decide if you need more chunks:
-```python
-chunks = retriever.retrieve(enhanced_query, k=20)
+---
 
-for attempt in range(2):  # Try max 2 times
-    critic = Critic(enhanced_query, chunks)
-    filtered_chunks, metadata = critic.execute()
-    
-    # Good enough? Stop here
-    if metadata['confidence'] >= 0.7 or attempt == 1:
-        break
-    
-    # Low confidence? Get more chunks and try again
-    more_chunks = retriever.retrieve(enhanced_query, k=10)
-    chunks.extend(more_chunks)
+### 4. Pipeline (`rag_pipeline.py`)
+
+Orchestrates the full RAG workflow with iterative refinement.
+
+**Execution flow:**
+
+1. **Enhancement** - Understand the question
+2. **First Retrieval** - Fetch top 20 chunks using enhanced queries
+3. **Refinement Loop** (max 2 attempts):
+   - Critic evaluates chunks
+   - If confidence < 0.7, fetch 5 more chunks
+   - Repeat until confidence threshold met
+4. **LLM Generation** - GPT-4o generates personalized answer
+
+**System prompt highlights:**
+- Cite sources: `[Source: filename, Page: X]`
+- Adapt style based on pedagogical review
+- Use LaTeX for math (`$$` display, `$` inline)
+- Address misconceptions gently
+- List assumed prerequisites at end
+
+**Configuration:**
+```python
+@dataclass
+class PipelineConfig:
+    initial_chunk_count: int = 20
+    max_refinement_attempts: int = 2
+    confidence_threshold: float = 0.7
+    llm_model: str = "gpt-4o"
+    llm_temperature: float = 0.4
 ```
 
-#### When to use the loop
-- Use it if answers often feel incomplete
-- Skip it if retrieval already gets good chunks (saves cost)
-- Start without it, add later if needed
+**Usage:**
+```python
+pipeline = Pipeline()
+response = pipeline.execute("What is electromagnetic induction?")
+print(response.content)  # Full answer with citations
+```
+
+---
+
+### 5. Evaluator (`evaluator.py`)
+
+Systematically compares RAG-enhanced answers against baseline LLM responses.
+
+**Judge System:**
+Uses GPT-5 as an expert evaluator to score answers on three criteria:
+
+1. **First-Principles Reasoning (40%)** - Does it build from fundamental laws?
+2. **Conceptual Comprehensiveness (35%)** - Breadth of connections and context
+3. **Clarity and Pedagogical Quality (25%)** - Logical flow and accessibility
+
+**Scoring:**
+- `+1.0` - RAG substantially better (clear superiority in 2+ criteria)
+- `+0.5` - RAG somewhat better (modest improvement)
+- `0.0` - Equivalent or RAG worse
+
+**Test set:** 10 representative electromagnetism questions covering:
+- Fundamental laws (Gauss's law, Coulomb's law)
+- Problem-solving techniques
+- Conceptual understanding
+- Mathematical derivations
+
+**Usage:**
+```python
+from evaluator import Judge, generate_replies
+
+judge = Judge()
+question = "Can you explain Gauss's law?"
+
+# Generate both answers
+rag_answer, baseline_answer = generate_replies(question)
+
+# Evaluate
+score, reasoning = judge.judge_answers(question, rag_answer, baseline_answer)
+print(f"Score: {score}")
+print(f"Reasoning: {reasoning}")
+```
+
+**Running full evaluation:**
+```bash
+python evaluator.py  # Generates evaluation_report.md with mean score
+```
+
+---
+
+
+## Design Trade-offs
+
+**Multi-agent vs Single LLM:**
+- ✅ Better retrieval precision
+- ✅ Pedagogically aware responses
+- ❌ Higher latency (4 parallel + 2 sequential calls)
+- ❌ Increased API costs
+
+**Iterative refinement:**
+- ✅ Adapts to question complexity
+- ✅ Higher answer quality
+- ❌ Variable response times
+- ⚖️ Confidence threshold (0.7) balances quality/cost
+
+**Chunk size (512 chars):**
+- ✅ Preserves physics derivations
+- ✅ Maintains equation context
+- ❌ Fewer chunks per textbook
+- Alternative: 256 chars for more granular retrieval
+
+---
+
+## Monitoring
+
+The pipeline logs detailed execution metrics:
+- Chunk counts at each stage
+- Critic confidence scores
+- LLM token usage and costs
+- Processing times
+
+Enable monitoring by running with console output.
+
+---
+
+## Next Steps
+
+- [ ] Frontend interface (chat UI)
+- [ ] Conversation history integration
+- [ ] Support for images/diagrams from PDFs
+- [ ] Multi-turn clarification dialogues
+- [ ] Expand to other physics domains
+
+---
+
+## Technical Stack
+
+- **LLMs:** GPT-4o (main), GPT-4o-mini (agents), GPT-5 (evaluation)
+- **Embeddings:** HuggingFace `all-MiniLM-L6-v2`
+- **Vector Store:** ChromaDB
+- **Framework:** LangChain
+- **PDF Processing:** pdfplumber
